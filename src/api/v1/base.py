@@ -103,16 +103,20 @@ async def upload_file(
         uuid=uuid.uuid4().hex
     )
 
+    file_in_db, created = await file_crud.create_or_update(
+        db=db, obj_in=file
+    )
+
     file_storage = os.path.dirname(os.path.abspath(__name__)) 
     file_storage = os.path.join(file_storage, 'users_files')
     catalog = f'{file_storage}/{current_user.username}/{catalog}'
     os.makedirs(catalog, exist_ok=True)
     out_file_path = os.path.join(catalog, file_name)
+    if not created:
+        os.remove(out_file_path)
     async with aiofiles.open(out_file_path, 'wb') as out_file:
         content = await file_in.read()  # async read
         await out_file.write(content)
-    
-    file_in_db = await file_crud.create(db=db, obj_in=file)
 
     return schemas.FileInDB(
         id=file_in_db.uuid,

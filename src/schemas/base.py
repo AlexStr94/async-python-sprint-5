@@ -23,11 +23,14 @@ class FullUser(User):
     id: int
 
 
-class File(BaseModel):
+class FileUpdate(BaseModel):
     path: str
     size: int
-    is_downloadable: bool = True
     user_id: int
+
+
+class File(FileUpdate):
+    is_downloadable: bool = True
     uuid: str
 
 
