@@ -73,6 +73,10 @@ async def get_current_user(
     )
     if user_in_db is None:
         raise CredentialException
-    return schemas.FullUser(username=username, id=user_in_db.id)
+    return schemas.FullUser(
+        username=username,
+        id=user_in_db.id,
+        uuid=user_in_db.uuid
+    )
 
 

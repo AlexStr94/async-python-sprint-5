@@ -157,6 +157,25 @@ class RepositoryFile(RepositoryDB[models.File, schemas.File, schemas.FileUpdate]
 
         db_obj = await self.create(db, obj_in)
         return db_obj, True
+    
+    async def get_multi(self,
+        db: AsyncSession,
+        user_id: int
+    ) -> List[schemas.FileInDB]:
+        statement = select(self._model).where(self._model.user_id == user_id)
+        results = await db.execute(statement=statement)
+        files_query = results.scalars()
+        files = [
+            schemas.FileInDB(
+                id=file.uuid,
+                name=file.path.split('/')[-1],
+                created_at=file.created_at,
+                path=file.path,
+                size=file.size,
+                is_downloadable=file.is_downloadable
+            ) for file in files_query
+        ]
+        return files
         
 
 user_crud = RepositoryUser(models.User)

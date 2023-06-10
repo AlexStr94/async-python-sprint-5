@@ -6,6 +6,7 @@ import uuid
 import aiofiles
 from fastapi import APIRouter, Depends, Form, HTTPException, status, File, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.db import get_session
@@ -15,6 +16,10 @@ from services.auth import ACCESS_TOKEN_EXPIRE_DAYS, authenticate_user, create_ac
 from services.db import user_crud, file_crud
 from schemas import base as schemas
 
+FILE_STORAGE = os.path.join(
+    os.path.dirname(os.path.abspath(__name__)),
+    'users_files'
+)
 
 router = APIRouter()
 
@@ -69,7 +74,7 @@ async def upload_file(
     path: Annotated[str, Form()],
     current_user: Annotated[schemas.FullUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_session)
-):  
+) -> schemas.FileInDB:  
     if not file_in.size:
         raise Exception
     if not (file_type := file_in.content_type):
@@ -107,9 +112,7 @@ async def upload_file(
         db=db, obj_in=file
     )
 
-    file_storage = os.path.dirname(os.path.abspath(__name__)) 
-    file_storage = os.path.join(file_storage, 'users_files')
-    catalog = f'{file_storage}/{current_user.username}/{catalog}'
+    catalog = f'{FILE_STORAGE}/{current_user.username}/{catalog}'
     os.makedirs(catalog, exist_ok=True)
     out_file_path = os.path.join(catalog, file_name)
     if not created:
@@ -120,9 +123,60 @@ async def upload_file(
 
     return schemas.FileInDB(
         id=file_in_db.uuid,
-        name=file_in_db.path.split()[-1],
+        name=file_in_db.path.split('/')[-1],
         created_at=file_in_db.created_at,
         path=file_in_db.path,
         size=file_in_db.size,
         is_downloadable=file_in_db.is_downloadable
+    )
+
+
+@router.get(
+        '/files/download',
+        status_code=status.HTTP_200_OK,
+)
+async def download_file(
+    path: str,
+    current_user: Annotated[schemas.FullUser, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_session),
+):
+    if not '.' in path:
+        _uuid = path
+        file = await file_crud.get(
+            db,
+            user_id=current_user.id,
+            uuid=_uuid
+        )
+    else:
+        file = await file_crud.get(
+            db,
+            user_id=current_user.id,
+            path=path
+        )
+    if not file:
+        raise Exception # add custom exception
+    
+    file_type = mimetypes.guess_type(file.path, strict=False)[0]
+
+    file_path = f'{FILE_STORAGE}/{current_user.username}/{file.path}'
+
+    def iterfile():  # 
+        with open(file_path, mode="rb") as file_like:  # 
+            yield from file_like  #
+
+    return StreamingResponse(iterfile(), media_type=file_type)
+    
+
+@router.get(
+    '/files',
+    status_code=status.HTTP_200_OK
+)
+async def get_files_list(
+    current_user: Annotated[schemas.FullUser, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_session),
+) -> schemas.FileList:
+    files = await file_crud.get_multi(db, current_user.id)
+    return schemas.FileList(
+        account_id=current_user.uuid,
+        files=files
     )

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import List
 from pydantic import BaseModel
 
 
@@ -21,6 +22,7 @@ class UserInDB(User):
 
 class FullUser(User):
     id: int
+    uuid: str
 
 
 class FileUpdate(BaseModel):
@@ -41,3 +43,8 @@ class FileInDB(BaseModel):
     path: str
     size: int
     is_downloadable: bool
+
+
+class FileList(BaseModel):
+    account_id: str
+    files: List[FileInDB]
