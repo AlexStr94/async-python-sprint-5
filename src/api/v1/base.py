@@ -4,16 +4,16 @@ import os
 from typing import Annotated
 import uuid
 import aiofiles
-from fastapi import APIRouter, Depends, Form, HTTPException, status, File, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, status, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.db import get_session
-from exceptions.dp import UserAlreadyExist
+from exceptions.dp import DatabaseConnectionError, UserAlreadyExist
 from models import base as models
 from services.auth import ACCESS_TOKEN_EXPIRE_DAYS, authenticate_user, create_access_token, get_current_user
-from services.db import user_crud, file_crud
+from services.db import db_ping, user_crud, file_crud
 from schemas import base as schemas
 
 FILE_STORAGE = os.path.join(
@@ -22,6 +22,19 @@ FILE_STORAGE = os.path.join(
 )
 
 router = APIRouter()
+
+
+@router.get(
+    '/ping',
+    status_code=status.HTTP_200_OK
+)
+async def ping(
+    db: AsyncSession = Depends(get_session)
+) -> schemas.Ping:
+    ping = await db_ping(db)
+    if ping:
+        return schemas.Ping(db=ping)
+    raise DatabaseConnectionError
 
 
 @router.post(
@@ -33,14 +46,16 @@ async def register(
     db: AsyncSession = Depends(get_session)
 ):
     try:
-        user: models.User = await user_crud.create(db=db, obj_in=user_in)
+        await user_crud.create(db=db, obj_in=user_in)
     except UserAlreadyExist:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail='User with this username already exist'
         )
     
-    return
+    return {
+        'created': 'ok'
+    }
 
 
 @router.post('/auth', response_model=schemas.Token)

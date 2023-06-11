@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
 import uuid
 
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -176,7 +176,18 @@ class RepositoryFile(RepositoryDB[models.File, schemas.File, schemas.FileUpdate]
             ) for file in files_query
         ]
         return files
-        
+     
 
 user_crud = RepositoryUser(models.User)
 file_crud = RepositoryFile(models.File)
+
+
+async def db_ping(db: AsyncSession) -> Optional[timedelta]:
+    statement = text('SELECT version();')
+    start = datetime.utcnow()
+    try:
+        await db.execute(statement)
+        ping = datetime.utcnow() - start
+        return ping
+    except ConnectionRefusedError:
+        return None

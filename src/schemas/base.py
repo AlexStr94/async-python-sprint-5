@@ -1,7 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 from pydantic import BaseModel
 
+
+class Ping(BaseModel):
+    db: timedelta
 
 class Token(BaseModel):
     access_token: str
