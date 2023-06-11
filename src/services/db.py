@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta
-from typing import Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
 import uuid
+from datetime import datetime, timedelta
+from typing import Generic, List, Optional, Tuple, Type, TypeVar
 
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
@@ -8,18 +8,18 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services import auth
 from db.db import Base
+from exceptions import dp as exceptions
 from models import base as models
 from schemas import base as schemas
-from exceptions import dp as exceptions
+from services import auth
 
 
 class Repository:
 
     def get(self, *args, **kwargs):
         raise NotImplementedError
-    
+
     def create_or_update(self, *args, **kwargs):
         raise NotImplementedError
 
@@ -34,7 +34,7 @@ class Repository:
 
     def delete(self, *args, **kwargs):
         raise NotImplementedError
-    
+
 
 ModelType = TypeVar("ModelType", bound=Base)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
@@ -69,12 +69,12 @@ class RepositoryUser(RepositoryDB[models.User, schemas.UserAuth, schemas.UserAut
             raise exceptions.UserAlreadyExist
         await db.refresh(db_obj)
         return db_obj
-    
+
     async def get(self, db: AsyncSession, username: str) -> Optional[models.User]:
         statement = select(self._model).where(self._model.username == username)
         results = await db.execute(statement=statement)
         return results.scalar_one_or_none()
-    
+
 
 class RepositoryFile(RepositoryDB[models.File, schemas.File, schemas.FileUpdate]):
     async def get(
@@ -90,29 +90,30 @@ class RepositoryFile(RepositoryDB[models.File, schemas.File, schemas.FileUpdate]
             raise exceptions.FieldError(field='user_id')
         if not path and not uuid:
             raise exceptions.FieldError(field='path or uuid')
-        
+
         if uuid:
             statement = select(self._model). \
                 where(
                     self._model.uuid == uuid,
                     self._model.user_id == user_id
-                )
+            )
             results = await db.execute(statement=statement)
             file_obj = results.scalar_one_or_none()
 
-            if file_obj: return file_obj
-        
+            if file_obj:
+                return file_obj
+
         if path:
             statement = select(self._model). \
                 where(
                     self._model.path == path,
                     self._model.user_id == user_id
-                )
+            )
             results = await db.execute(statement=statement)
             return results.scalar_one_or_none()
-        
+
         return None
-    
+
     async def update(
         self,
         db: AsyncSession,
@@ -128,7 +129,7 @@ class RepositoryFile(RepositoryDB[models.File, schemas.File, schemas.FileUpdate]
             db.commit()
             return db_obj
         raise exceptions.FileDoesNotExist
-        
+
     async def create_or_update(
         self,
         db: AsyncSession,
@@ -157,7 +158,7 @@ class RepositoryFile(RepositoryDB[models.File, schemas.File, schemas.FileUpdate]
 
         db_obj = await self.create(db, obj_in)
         return db_obj, True
-    
+
     async def get_multi(self,
         db: AsyncSession,
         user_id: int
@@ -176,7 +177,7 @@ class RepositoryFile(RepositoryDB[models.File, schemas.File, schemas.FileUpdate]
             ) for file in files_query
         ]
         return files
-     
+
 
 user_crud = RepositoryUser(models.User)
 file_crud = RepositoryFile(models.File)

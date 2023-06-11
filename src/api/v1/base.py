@@ -1,20 +1,29 @@
-from datetime import timedelta
 import mimetypes
 import os
-from typing import Annotated
 import uuid
+from datetime import timedelta
+from typing import Annotated
+
 import aiofiles
-from fastapi import APIRouter, Depends, Form, HTTPException, status, UploadFile
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.db import get_session
-from exceptions.dp import DatabaseConnectionError, UserAlreadyExist
+from exceptions.api import (
+    DatabaseConnectionError, FileError, FilePathError, FileTypeError
+)
+from exceptions.auth import AuthError
+from exceptions.dp import UserAlreadyExist
 from models import base as models
-from services.auth import ACCESS_TOKEN_EXPIRE_DAYS, authenticate_user, create_access_token, get_current_user
-from services.db import db_ping, user_crud, file_crud
 from schemas import base as schemas
+from services.auth import (
+    ACCESS_TOKEN_EXPIRE_DAYS, authenticate_user,
+    create_access_token, get_current_user
+)
+from services.db import db_ping, file_crud, user_crud
+
 
 FILE_STORAGE = os.path.join(
     os.path.dirname(os.path.abspath(__name__)),
@@ -26,7 +35,8 @@ router = APIRouter()
 
 @router.get(
     '/ping',
-    status_code=status.HTTP_200_OK
+    status_code=status.HTTP_200_OK,
+    response_model=schemas.Ping
 )
 async def ping(
     db: AsyncSession = Depends(get_session)
@@ -52,7 +62,7 @@ async def register(
             status_code=status.HTTP_409_CONFLICT,
             detail='User with this username already exist'
         )
-    
+
     return {
         'created': 'ok'
     }
@@ -63,13 +73,11 @@ async def get_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: AsyncSession = Depends(get_session)
 ) -> schemas.Token:
-    user: models.User | None = await authenticate_user(db, form_data.username, form_data.password)
+    user: models.User | None = await authenticate_user(
+        db, form_data.username, form_data.password
+    )
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise AuthError
     access_token_expires = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
@@ -82,29 +90,29 @@ async def get_access_token(
 
 @router.post(
     '/files/upload',
-    status_code=status.HTTP_201_CREATED
+    status_code=status.HTTP_201_CREATED,
+    response_model=schemas.FileInDB
 )
 async def upload_file(
     file_in: UploadFile,
     path: Annotated[str, Form()],
     current_user: Annotated[schemas.FullUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_session)
-) -> schemas.FileInDB:  
+) -> schemas.FileInDB:
     if not file_in.size:
-        raise Exception
+        raise FileError
     if not (file_type := file_in.content_type):
-        raise Exception # add custom exception need type
-    
+        raise FileTypeError  
     if not mimetypes.guess_all_extensions(file_type, strict=False):
-        raise Exception # add custom exception type not supported
-    
+        raise FileTypeError
+
     file_type_in_path = mimetypes.guess_type(path, strict=False)[0]
     if (
         file_type_in_path
         and file_type_in_path != file_type
     ):
-        raise Exception # add custom Exception
-    
+        raise FileTypeError  
+
     if file_type_in_path:
         splited_path = path.split('/')
         file_name = splited_path[-1]
@@ -113,9 +121,9 @@ async def upload_file(
         file_name = file_in.filename
         if not file_name:
             raise Exception
-        catalog=path
+        catalog = path
         path = os.path.join(path, file_name)
-    
+
     file = schemas.File(
         path=path,
         size=file_in.size,
@@ -133,7 +141,7 @@ async def upload_file(
     if not created:
         os.remove(out_file_path)
     async with aiofiles.open(out_file_path, 'wb') as out_file:
-        content = await file_in.read()  # async read
+        content = await file_in.read()
         await out_file.write(content)
 
     return schemas.FileInDB(
@@ -147,14 +155,14 @@ async def upload_file(
 
 
 @router.get(
-        '/files/download',
-        status_code=status.HTTP_200_OK,
+    '/files/download',
+    status_code=status.HTTP_200_OK,
 )
 async def download_file(
     path: str,
     current_user: Annotated[schemas.FullUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_session),
-):
+) -> StreamingResponse:
     if not '.' in path:
         _uuid = path
         file = await file_crud.get(
@@ -169,22 +177,23 @@ async def download_file(
             path=path
         )
     if not file:
-        raise Exception # add custom exception
-    
+        raise FilePathError
+
     file_type = mimetypes.guess_type(file.path, strict=False)[0]
 
     file_path = f'{FILE_STORAGE}/{current_user.username}/{file.path}'
 
-    def iterfile():  # 
-        with open(file_path, mode="rb") as file_like:  # 
-            yield from file_like  #
+    def iterfile():
+        with open(file_path, mode="rb") as file_like:
+            yield from file_like 
 
     return StreamingResponse(iterfile(), media_type=file_type)
-    
+
 
 @router.get(
     '/files',
-    status_code=status.HTTP_200_OK
+    status_code=status.HTTP_200_OK,
+    response_model=schemas.FileList
 )
 async def get_files_list(
     current_user: Annotated[schemas.FullUser, Depends(get_current_user)],

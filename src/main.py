@@ -5,7 +5,6 @@ from fastapi.responses import ORJSONResponse
 from api.v1 import base
 from core.config import app_settings
 
-
 app = FastAPI(
     title=app_settings.app_title,
     default_response_class=ORJSONResponse,

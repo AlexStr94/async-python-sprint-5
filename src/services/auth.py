@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
-from typing import Annotated, Optional
+from typing import Annotated
+
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
-from jose import JWTError, jwt
 
 from core.config import app_settings
 from db.db import get_session
@@ -12,7 +13,6 @@ from exceptions.auth import CredentialException
 from models import base as models
 from schemas import base as schemas
 from services.db import user_crud
-
 
 SECRET_KEY = app_settings.secret_key
 ALGORITHM = 'HS256'
@@ -78,5 +78,3 @@ async def get_current_user(
         id=user_in_db.id,
         uuid=user_in_db.uuid
     )
-
-
