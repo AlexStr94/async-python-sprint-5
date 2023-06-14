@@ -36,7 +36,8 @@ router = APIRouter()
 @router.get(
     '/ping',
     status_code=status.HTTP_200_OK,
-    response_model=schemas.Ping
+    response_model=schemas.Ping,
+    description='Проверка доступности базы данных'
 )
 async def ping(
     db: AsyncSession = Depends(get_session)
@@ -49,12 +50,18 @@ async def ping(
 
 @router.post(
     '/register',
-    status_code=status.HTTP_201_CREATED
+    status_code=status.HTTP_201_CREATED,
 )
 async def register(
     user_in: schemas.UserAuth,
     db: AsyncSession = Depends(get_session)
 ):
+    """
+        Для регистрации пользователя необходимо предоставить
+        следующую информацию:
+        - **username**: имя пользователя
+        - **password**: пароль
+    """
     try:
         await user_crud.create(db=db, obj_in=user_in)
     except UserAlreadyExist:
@@ -73,6 +80,12 @@ async def get_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: AsyncSession = Depends(get_session)
 ) -> schemas.Token:
+    """
+        Для получения токена пользователя
+        необходимо предоставить следующую информацию:
+        - **username**: имя пользователя
+        - **password**: пароль
+    """
     user: models.User | None = await authenticate_user(
         db, form_data.username, form_data.password
     )
@@ -99,6 +112,16 @@ async def upload_file(
     current_user: Annotated[schemas.FullUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_session)
 ) -> schemas.FileInDB:
+    """
+        Для отправки файла в заголовке запроса 
+        необходимо указать токен:
+        - Authorization: Bearer <token>
+        Запрос должен содердать форму с двумя полями:
+
+        - **file_in**: файл, обязательно должен содержать формат.
+        - **path**: расположение файла в системе MyDisk. Может содержать
+        путь к каталог или полный путь к файлу. 
+    """
     if not file_in.size:
         raise FileError
     if not (file_type := file_in.content_type):
@@ -163,6 +186,14 @@ async def download_file(
     current_user: Annotated[schemas.FullUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
+    """
+        Для щагрузки файла в заголовке запроса 
+        необходимо указать токен:
+        - Authorization: Bearer <token>
+        Запрос должен содердать следующие поля:
+        - **path**: расположение файла в системе MyDisk. Также
+        возможно указать id файла.
+    """
     if not '.' in path:
         _uuid = path
         file = await file_crud.get(
@@ -199,6 +230,11 @@ async def get_files_list(
     current_user: Annotated[schemas.FullUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_session),
 ) -> schemas.FileList:
+    """
+        Для получения списка загруженных файлов
+        в заголовке запроса  необходимо указать токен:
+        - Authorization: Bearer <token>
+    """
     files = await file_crud.get_multi(db, current_user.id)
     return schemas.FileList(
         account_id=current_user.uuid,

@@ -11,7 +11,7 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String(100), unique=True, nullable=False)
     hashed_password = Column(String(100), nullable=False)
-    files = relationship('File', back_populates='user')
+    files = relationship('File', back_populates='user', cascade='delete, merge, save-update')
     uuid = Column(String(100), unique=True, nullable=False)
 
     def __repr__(self) -> str:
@@ -25,6 +25,6 @@ class File(Base):
     path = Column(String(300), unique=True, nullable=False)
     size = Column(Integer, nullable=False)
     is_downloadable = Column(Boolean, default=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     user = relationship('User', back_populates="files")
     uuid = Column(String(100), unique=True, nullable=False)

@@ -6,3 +6,4 @@ __pycache__/
 users_files
 venv
 .env
+.vscode
